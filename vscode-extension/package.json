@@ -1,0 +1,92 @@
+{
+  "name": "pm-command-center-chat",
+  "displayName": "PM Command Center",
+  "description": "Chat with your PM data - ask about releases, estimates, CI/CD status, and more",
+  "version": "0.1.0",
+  "publisher": "msfttoler",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "keywords": [
+    "copilot",
+    "chat",
+    "pm",
+    "product manager",
+    "github",
+    "azure devops",
+    "jira"
+  ],
+  "activationEvents": [
+    "onChatParticipant:pm-command-center.pm"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "pm-command-center.pm",
+        "fullName": "PM Command Center",
+        "name": "pm",
+        "description": "Ask about release status, story estimates, CI/CD pipelines, and more",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "release",
+            "description": "Check release readiness and milestone status"
+          },
+          {
+            "name": "estimate",
+            "description": "Get story point estimates for a user story"
+          },
+          {
+            "name": "cicd",
+            "description": "Check CI/CD pipeline status and health"
+          },
+          {
+            "name": "gaps",
+            "description": "Find issues with missing requirements or labels"
+          },
+          {
+            "name": "summary",
+            "description": "Get a full PM dashboard summary"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "PM Command Center",
+      "properties": {
+        "pmCommandCenter.github.owner": {
+          "type": "string",
+          "description": "GitHub repository owner/organization"
+        },
+        "pmCommandCenter.github.repo": {
+          "type": "string",
+          "description": "GitHub repository name"
+        },
+        "pmCommandCenter.azureDevOps.organization": {
+          "type": "string",
+          "description": "Azure DevOps organization name"
+        },
+        "pmCommandCenter.azureDevOps.project": {
+          "type": "string",
+          "description": "Azure DevOps project name"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.93.0",
+    "typescript": "^5.3.0"
+  }
+}
