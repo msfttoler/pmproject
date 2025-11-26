@@ -1,7 +1,7 @@
 {
-  "name": "test-case-assistant",
+  "name": "pm-command-center",
   "version": "1.0.0",
-  "description": "AI-Powered Test Case Assistant for Product Managers",
+  "description": "AI-Powered PM Command Center - Test cases, releases, story gaps, and PR tracking",
   "type": "module",
   "scripts": {
     "dev": "vite",
