@@ -1,4 +1,4 @@
-# Test Case Assistant - Architecture
+# PM Command Center - Architecture
 
 ## System Overview
 

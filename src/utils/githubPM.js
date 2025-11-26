@@ -414,3 +414,272 @@ export function generateReleaseNotes(release) {
 
   return notes
 }
+
+/**
+ * Fetch closed issues with timing data for learning
+ */
+export async function fetchClosedIssuesWithTiming(owner, repo, token) {
+  const response = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/issues?state=closed&per_page=100&sort=updated&direction=desc`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  })
+  
+  if (!response.ok) throw new Error(`GitHub API error: ${response.status}`)
+  
+  const issues = await response.json()
+  
+  // Filter to actual issues (not PRs) and calculate cycle time
+  return issues
+    .filter(i => !i.pull_request)
+    .map(issue => {
+      const created = new Date(issue.created_at)
+      const closed = new Date(issue.closed_at)
+      const cycleTimeDays = Math.ceil((closed - created) / (1000 * 60 * 60 * 24))
+      
+      // Extract story points from labels if present
+      const pointsLabel = issue.labels.find(l => 
+        l.name.match(/^(sp|points?|story.?points?)[:\s-]?\d+$/i) ||
+        l.name.match(/^\d+\s*(sp|points?)?$/i)
+      )
+      const points = pointsLabel ? parseInt(pointsLabel.name.match(/\d+/)?.[0] || '0') : null
+      
+      // Categorize by labels
+      const labels = issue.labels.map(l => l.name.toLowerCase())
+      const isFeature = labels.some(l => ['feature', 'enhancement', 'type/feature'].includes(l))
+      const isBug = labels.some(l => ['bug', 'fix', 'type/bug'].includes(l))
+      const isChore = labels.some(l => ['chore', 'maintenance', 'tech-debt'].includes(l))
+      
+      // Complexity indicators from title/body
+      const text = `${issue.title} ${issue.body || ''}`.toLowerCase()
+      const complexityIndicators = {
+        hasApi: /api|endpoint|integration|external/.test(text),
+        hasDb: /database|migration|schema|model/.test(text),
+        hasUi: /ui|component|page|screen|modal|form/.test(text),
+        hasAuth: /auth|login|permission|role|security/.test(text),
+        hasTesting: /test|spec|coverage/.test(text),
+        isRefactor: /refactor|rewrite|redesign/.test(text),
+        isNew: /new|create|add|implement/.test(text),
+        isUpdate: /update|change|modify|fix/.test(text)
+      }
+      
+      return {
+        number: issue.number,
+        title: issue.title,
+        cycleTimeDays,
+        points,
+        isFeature,
+        isBug,
+        isChore,
+        complexityIndicators,
+        labels,
+        titleLength: issue.title.length,
+        bodyLength: (issue.body || '').length
+      }
+    })
+}
+
+/**
+ * Build estimation model from historical data
+ */
+export function buildEstimationModel(historicalIssues) {
+  if (historicalIssues.length < 5) {
+    return { hasEnoughData: false, issues: historicalIssues }
+  }
+
+  // Group by type
+  const features = historicalIssues.filter(i => i.isFeature)
+  const bugs = historicalIssues.filter(i => i.isBug)
+  const chores = historicalIssues.filter(i => i.isChore)
+  const other = historicalIssues.filter(i => !i.isFeature && !i.isBug && !i.isChore)
+
+  // Calculate averages
+  const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0
+  
+  const avgCycleTime = {
+    feature: avg(features.map(i => i.cycleTimeDays)) || 5,
+    bug: avg(bugs.map(i => i.cycleTimeDays)) || 2,
+    chore: avg(chores.map(i => i.cycleTimeDays)) || 3,
+    other: avg(other.map(i => i.cycleTimeDays)) || 3
+  }
+
+  // Calculate complexity multipliers based on indicators
+  const withApi = historicalIssues.filter(i => i.complexityIndicators.hasApi)
+  const withDb = historicalIssues.filter(i => i.complexityIndicators.hasDb)
+  const withAuth = historicalIssues.filter(i => i.complexityIndicators.hasAuth)
+  
+  const baseAvg = avg(historicalIssues.map(i => i.cycleTimeDays))
+  
+  const complexityMultipliers = {
+    api: withApi.length > 2 ? avg(withApi.map(i => i.cycleTimeDays)) / baseAvg : 1.3,
+    db: withDb.length > 2 ? avg(withDb.map(i => i.cycleTimeDays)) / baseAvg : 1.4,
+    auth: withAuth.length > 2 ? avg(withAuth.map(i => i.cycleTimeDays)) / baseAvg : 1.5,
+    refactor: 1.5,
+    newFeature: 1.2
+  }
+
+  // Point-to-days ratio if we have pointed issues
+  const pointedIssues = historicalIssues.filter(i => i.points)
+  const pointsToDays = pointedIssues.length > 3 
+    ? avg(pointedIssues.map(i => i.cycleTimeDays / i.points))
+    : 1 // default: 1 point = 1 day
+
+  return {
+    hasEnoughData: true,
+    sampleSize: historicalIssues.length,
+    avgCycleTime,
+    complexityMultipliers,
+    pointsToDays,
+    pointedIssuesCount: pointedIssues.length
+  }
+}
+
+/**
+ * Estimate story points for a new issue
+ */
+export function estimateStoryPoints(issue, model) {
+  if (!model.hasEnoughData) {
+    // Fallback to heuristic-based estimation
+    return heuristicEstimate(issue)
+  }
+
+  const text = `${issue.title} ${issue.body || ''}`.toLowerCase()
+  const labels = (issue.labels || []).map(l => (l.name || l).toLowerCase())
+  
+  // Determine type
+  const isFeature = labels.some(l => ['feature', 'enhancement'].includes(l)) || 
+                    /new|create|add|implement|feature/.test(text)
+  const isBug = labels.some(l => ['bug', 'fix'].includes(l)) || /bug|fix|broken/.test(text)
+  const isChore = labels.some(l => ['chore', 'maintenance'].includes(l))
+
+  // Base estimate from type
+  let baseDays = isFeature ? model.avgCycleTime.feature :
+                 isBug ? model.avgCycleTime.bug :
+                 isChore ? model.avgCycleTime.chore :
+                 model.avgCycleTime.other
+
+  // Apply complexity multipliers
+  if (/api|endpoint|integration/.test(text)) baseDays *= model.complexityMultipliers.api
+  if (/database|migration|schema/.test(text)) baseDays *= model.complexityMultipliers.db
+  if (/auth|login|permission|security/.test(text)) baseDays *= model.complexityMultipliers.auth
+  if (/refactor|rewrite/.test(text)) baseDays *= model.complexityMultipliers.refactor
+
+  // Convert to story points (rounded to fibonacci-ish)
+  const rawPoints = baseDays / model.pointsToDays
+  const fibonacci = [1, 2, 3, 5, 8, 13, 21]
+  const points = fibonacci.reduce((prev, curr) => 
+    Math.abs(curr - rawPoints) < Math.abs(prev - rawPoints) ? curr : prev
+  )
+
+  // Confidence based on sample size and similarity
+  const confidence = Math.min(95, 50 + model.sampleSize * 2)
+
+  return {
+    points,
+    estimatedDays: Math.round(baseDays),
+    confidence,
+    breakdown: {
+      type: isFeature ? 'Feature' : isBug ? 'Bug' : isChore ? 'Chore' : 'Task',
+      baseDays: model.avgCycleTime[isFeature ? 'feature' : isBug ? 'bug' : isChore ? 'chore' : 'other'],
+      complexityFactors: []
+    }
+  }
+}
+
+/**
+ * Fallback heuristic estimation when not enough historical data
+ */
+function heuristicEstimate(issue) {
+  const text = `${issue.title} ${issue.body || ''}`.toLowerCase()
+  const labels = (issue.labels || []).map(l => (l.name || l).toLowerCase())
+  
+  let points = 3 // default medium
+  const factors = []
+
+  // Type adjustments
+  if (labels.some(l => l.includes('bug')) || /bug|fix/.test(text)) {
+    points = 2
+    factors.push('Bug fix (typically smaller)')
+  } else if (/new|create|implement|feature/.test(text)) {
+    points = 5
+    factors.push('New feature (typically larger)')
+  }
+
+  // Complexity adjustments
+  if (/api|integration|external/.test(text)) {
+    points += 2
+    factors.push('+2 for API/integration work')
+  }
+  if (/database|migration|schema/.test(text)) {
+    points += 2
+    factors.push('+2 for database changes')
+  }
+  if (/auth|security|permission/.test(text)) {
+    points += 2
+    factors.push('+2 for auth/security')
+  }
+  if (/refactor|rewrite|redesign/.test(text)) {
+    points += 3
+    factors.push('+3 for refactoring')
+  }
+  if (/simple|small|minor|typo/.test(text)) {
+    points = Math.max(1, points - 2)
+    factors.push('-2 for simple/minor work')
+  }
+
+  // Round to fibonacci
+  const fibonacci = [1, 2, 3, 5, 8, 13, 21]
+  const finalPoints = fibonacci.reduce((prev, curr) => 
+    Math.abs(curr - points) < Math.abs(prev - points) ? curr : prev
+  )
+
+  return {
+    points: finalPoints,
+    estimatedDays: finalPoints, // rough 1:1 without historical data
+    confidence: 40, // low confidence without data
+    breakdown: {
+      type: 'Unknown',
+      baseDays: null,
+      complexityFactors: factors
+    },
+    isHeuristic: true
+  }
+}
+
+/**
+ * Fetch and build complete estimation context
+ */
+export async function fetchEstimationData(owner, repo, token) {
+  const historicalIssues = await fetchClosedIssuesWithTiming(owner, repo, token)
+  const model = buildEstimationModel(historicalIssues)
+  
+  // Also fetch open issues to estimate
+  const response = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/issues?state=open&per_page=50`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  })
+  
+  if (!response.ok) throw new Error(`GitHub API error: ${response.status}`)
+  
+  const openIssues = await response.json()
+  const stories = openIssues.filter(i => !i.pull_request)
+  
+  // Estimate each open issue
+  const estimatedStories = stories.map(issue => ({
+    number: issue.number,
+    title: issue.title,
+    url: issue.html_url,
+    labels: issue.labels.map(l => l.name),
+    estimate: estimateStoryPoints(issue, model)
+  }))
+
+  return {
+    model,
+    historicalCount: historicalIssues.length,
+    stories: estimatedStories,
+    totalPoints: estimatedStories.reduce((sum, s) => sum + s.estimate.points, 0)
+  }
+}

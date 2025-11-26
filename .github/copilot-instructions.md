@@ -1,7 +1,7 @@
-# Copilot Instructions for Test Case Assistant
+# Copilot Instructions for PM Command Center
 
 ## Project Context
-This is an AI-Powered Test Case Assistant that helps Product Managers generate, refine, and organize test cases from user stories using GitHub Copilot.
+This is the PM Command Center - an AI-powered tool that helps Product Managers with test case generation, story point estimation, release tracking, and cross-platform work item management using GitHub Copilot.
 
 ## Code Style Guidelines
 - Use modern ES6+ JavaScript/TypeScript
