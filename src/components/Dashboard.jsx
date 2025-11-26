@@ -1,20 +1,82 @@
-import { generateSampleData } from '../types/dashboard'
-
-const data = generateSampleData()
+import { useState } from 'react'
+import { useDashboardData } from '../hooks/useDashboardData'
+import GitHubConfig from './GitHubConfig'
 
 export default function Dashboard({ onGenerateTests }) {
+  const [showConfig, setShowConfig] = useState(false)
+  const [githubConfig, setGithubConfig] = useState(() => {
+    // Load from localStorage if available
+    const saved = localStorage.getItem('githubConfig')
+    return saved ? JSON.parse(saved) : { owner: '', repo: '', token: '' }
+  })
+
+  const { data, loading, error, isLive, refresh } = useDashboardData(
+    githubConfig.owner,
+    githubConfig.repo,
+    githubConfig.token
+  )
+
+  const handleSaveConfig = (config) => {
+    setGithubConfig(config)
+    localStorage.setItem('githubConfig', JSON.stringify(config))
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-slate-400">Loading dashboard data...</div>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-slate-400">No data available</div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">PM Command Center</h2>
-          <p className="text-slate-400">Test coverage & backlog health at a glance</p>
+          <p className="text-slate-400">
+            {isLive ? (
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Live from {githubConfig.owner}/{githubConfig.repo}
+              </span>
+            ) : (
+              'Sample data - Connect GitHub for live metrics'
+            )}
+          </p>
         </div>
-        <div className="text-sm text-slate-400">
-          Last updated: {new Date().toLocaleTimeString()}
+        <div className="flex items-center gap-3">
+          {isLive && (
+            <button
+              onClick={refresh}
+              className="text-sm text-slate-400 hover:text-white transition-colors"
+            >
+              ↻ Refresh
+            </button>
+          )}
+          <button
+            onClick={() => setShowConfig(true)}
+            className="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            {isLive ? '⚙️ Settings' : '🔗 Connect GitHub'}
+          </button>
         </div>
       </div>
+
+      {error && (
+        <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-sm text-red-300">
+          ⚠️ {error} - Showing sample data
+        </div>
+      )}
 
       {/* Key Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -97,6 +159,14 @@ export default function Dashboard({ onGenerateTests }) {
           </div>
         </div>
       </div>
+
+      {showConfig && (
+        <GitHubConfig
+          config={githubConfig}
+          onSave={handleSaveConfig}
+          onClose={() => setShowConfig(false)}
+        />
+      )}
     </div>
   )
 }
@@ -151,6 +221,16 @@ function RiskRow({ risk, onGenerate }) {
       >
         → Generate Tests
       </button>
+      {risk.url && (
+        <a
+          href={risk.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-slate-500 hover:text-slate-300"
+        >
+          ↗
+        </a>
+      )}
     </div>
   )
 }
