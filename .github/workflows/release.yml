@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production
+        run: npm run build
+
+      - name: Create release archive
+        run: |
+          cd dist
+          zip -r ../pm-command-center-${{ github.ref_name }}.zip .
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "## What's Changed" > RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          git log $(git describe --tags --abbrev=0 HEAD^)..HEAD --pretty=format:"- %s" >> RELEASE_NOTES.md || echo "- Initial release" >> RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: pm-command-center-${{ github.ref_name }}.zip
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: true

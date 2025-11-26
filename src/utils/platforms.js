@@ -498,6 +498,79 @@ export class GitHubConnector {
       return false
     }
   }
+
+  /**
+   * Fetch GitHub Actions workflow runs
+   */
+  async fetchWorkflowRuns(status = null) {
+    let url = `https://api.github.com/repos/${this.owner}/${this.repo}/actions/runs?per_page=50`
+    if (status) {
+      url += `&status=${status}`
+    }
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github.v3+json' }
+    })
+    
+    if (!response.ok) throw new Error(`GitHub Actions API error: ${response.status}`)
+    
+    const data = await response.json()
+    return (data.workflow_runs || []).map(run => ({
+      id: `github-${run.id}`,
+      externalId: String(run.id),
+      platform: 'github',
+      name: run.name,
+      workflowName: run.workflow_name || run.name,
+      status: this._normalizeRunStatus(run.status, run.conclusion),
+      conclusion: run.conclusion,
+      branch: run.head_branch,
+      commit: run.head_sha?.substring(0, 7),
+      commitMessage: run.head_commit?.message?.split('\n')[0] || '',
+      actor: run.actor?.login || '',
+      actorAvatar: run.actor?.avatar_url,
+      event: run.event,
+      createdAt: new Date(run.created_at),
+      updatedAt: new Date(run.updated_at),
+      runNumber: run.run_number,
+      duration: run.updated_at && run.created_at 
+        ? Math.round((new Date(run.updated_at) - new Date(run.created_at)) / 1000)
+        : null,
+      url: run.html_url
+    }))
+  }
+
+  _normalizeRunStatus(status, conclusion) {
+    if (status === 'in_progress' || status === 'queued' || status === 'pending') {
+      return 'running'
+    }
+    if (status === 'completed') {
+      if (conclusion === 'success') return 'success'
+      if (conclusion === 'failure') return 'failed'
+      if (conclusion === 'cancelled') return 'cancelled'
+      return conclusion || 'unknown'
+    }
+    return status
+  }
+
+  /**
+   * Fetch available workflows
+   */
+  async fetchWorkflows() {
+    const response = await fetch(
+      `https://api.github.com/repos/${this.owner}/${this.repo}/actions/workflows`,
+      { headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github.v3+json' } }
+    )
+    
+    if (!response.ok) throw new Error(`GitHub API error: ${response.status}`)
+    
+    const data = await response.json()
+    return (data.workflows || []).map(wf => ({
+      id: wf.id,
+      name: wf.name,
+      path: wf.path,
+      state: wf.state
+    }))
+  }
 }
 
 /**
@@ -631,6 +704,149 @@ export class AzureDevOpsConnector {
     } catch {
       return false
     }
+  }
+
+  /**
+   * Fetch Azure DevOps pipeline runs
+   */
+  async fetchPipelineRuns(status = null) {
+    // First get all pipelines
+    const pipelinesResponse = await fetch(
+      `${this.baseUrl}/_apis/pipelines?api-version=7.0`,
+      { headers: this._getHeaders() }
+    )
+    
+    if (!pipelinesResponse.ok) {
+      // Try build definitions API as fallback
+      return this._fetchBuildRuns(status)
+    }
+
+    const pipelines = await pipelinesResponse.json()
+    const allRuns = []
+
+    // Fetch runs for each pipeline (limit to first 10 pipelines for performance)
+    for (const pipeline of (pipelines.value || []).slice(0, 10)) {
+      try {
+        const runsResponse = await fetch(
+          `${this.baseUrl}/_apis/pipelines/${pipeline.id}/runs?api-version=7.0`,
+          { headers: this._getHeaders() }
+        )
+        
+        if (runsResponse.ok) {
+          const runs = await runsResponse.json()
+          allRuns.push(...(runs.value || []).map(run => ({
+            id: `ado-${run.id}`,
+            externalId: String(run.id),
+            platform: 'azuredevops',
+            name: pipeline.name,
+            workflowName: pipeline.name,
+            status: this._normalizeAdoStatus(run.state, run.result),
+            conclusion: run.result,
+            branch: run.resources?.repositories?.self?.refName?.replace('refs/heads/', '') || '',
+            commit: run.resources?.repositories?.self?.version?.substring(0, 7) || '',
+            commitMessage: '',
+            actor: run.createdBy?.displayName || '',
+            event: 'push',
+            createdAt: new Date(run.createdDate),
+            updatedAt: new Date(run.finishedDate || run.createdDate),
+            runNumber: run.id,
+            duration: run.finishedDate && run.createdDate
+              ? Math.round((new Date(run.finishedDate) - new Date(run.createdDate)) / 1000)
+              : null,
+            url: run._links?.web?.href || `${this.baseUrl}/_build/results?buildId=${run.id}`
+          })))
+        }
+      } catch (e) {
+        console.warn(`Failed to fetch runs for pipeline ${pipeline.name}:`, e)
+      }
+    }
+
+    return allRuns.slice(0, 50) // Limit to 50 most recent
+  }
+
+  async _fetchBuildRuns(status = null) {
+    // Fallback to classic builds API
+    let url = `${this.baseUrl}/_apis/build/builds?api-version=7.0&$top=50`
+    if (status === 'running') {
+      url += '&statusFilter=inProgress,notStarted'
+    } else if (status === 'failed') {
+      url += '&resultFilter=failed'
+    }
+
+    const response = await fetch(url, { headers: this._getHeaders() })
+    
+    if (!response.ok) throw new Error(`Azure DevOps API error: ${response.status}`)
+    
+    const data = await response.json()
+    return (data.value || []).map(build => ({
+      id: `ado-${build.id}`,
+      externalId: String(build.id),
+      platform: 'azuredevops',
+      name: build.definition?.name || 'Build',
+      workflowName: build.definition?.name || 'Build',
+      status: this._normalizeAdoStatus(build.status, build.result),
+      conclusion: build.result,
+      branch: build.sourceBranch?.replace('refs/heads/', '') || '',
+      commit: build.sourceVersion?.substring(0, 7) || '',
+      commitMessage: build.triggerInfo?.['ci.message'] || '',
+      actor: build.requestedFor?.displayName || '',
+      event: build.reason || 'manual',
+      createdAt: new Date(build.queueTime || build.startTime),
+      updatedAt: new Date(build.finishTime || build.startTime),
+      runNumber: build.buildNumber,
+      duration: build.finishTime && build.startTime
+        ? Math.round((new Date(build.finishTime) - new Date(build.startTime)) / 1000)
+        : null,
+      url: build._links?.web?.href || `${this.baseUrl}/_build/results?buildId=${build.id}`
+    }))
+  }
+
+  _normalizeAdoStatus(state, result) {
+    if (state === 'inProgress' || state === 'notStarted') {
+      return 'running'
+    }
+    if (state === 'completed') {
+      if (result === 'succeeded') return 'success'
+      if (result === 'failed') return 'failed'
+      if (result === 'canceled') return 'cancelled'
+      if (result === 'partiallySucceeded') return 'warning'
+      return result || 'unknown'
+    }
+    return state
+  }
+
+  /**
+   * Fetch pipeline definitions
+   */
+  async fetchPipelines() {
+    const response = await fetch(
+      `${this.baseUrl}/_apis/pipelines?api-version=7.0`,
+      { headers: this._getHeaders() }
+    )
+    
+    if (!response.ok) {
+      // Fallback to build definitions
+      const defResponse = await fetch(
+        `${this.baseUrl}/_apis/build/definitions?api-version=7.0`,
+        { headers: this._getHeaders() }
+      )
+      if (!defResponse.ok) throw new Error(`Azure DevOps API error: ${defResponse.status}`)
+      const defs = await defResponse.json()
+      return (defs.value || []).map(d => ({
+        id: d.id,
+        name: d.name,
+        path: d.path,
+        type: 'build'
+      }))
+    }
+    
+    const data = await response.json()
+    return (data.value || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      folder: p.folder,
+      type: 'yaml'
+    }))
   }
 }
 
@@ -870,6 +1086,85 @@ export class PlatformManager {
   async buildCrossOrgEstimationModel() {
     const { issues } = await this.fetchAllIssues('closed')
     return buildCrossOrgEstimationModel(issues)
+  }
+
+  /**
+   * Fetch CI/CD pipeline runs from all platforms that support them
+   */
+  async fetchAllPipelineRuns() {
+    const results = { runs: [], errors: [] }
+
+    await Promise.all(
+      this.connectors.map(async (conn) => {
+        // Only GitHub and Azure DevOps have CI/CD
+        if (conn.platform === 'jira') return
+
+        try {
+          let runs = []
+          if (conn.platform === 'github') {
+            runs = await conn.fetchWorkflowRuns()
+          } else if (conn.platform === 'azuredevops') {
+            runs = await conn.fetchPipelineRuns()
+          }
+          results.runs.push(...runs)
+        } catch (e) {
+          results.errors.push({ platform: conn.platform, error: e.message })
+        }
+      })
+    )
+
+    // Sort by most recent first
+    results.runs.sort((a, b) => b.createdAt - a.createdAt)
+
+    return results
+  }
+
+  /**
+   * Get CI/CD pipelines grouped by status
+   */
+  async getCICDSummary() {
+    const { runs, errors } = await this.fetchAllPipelineRuns()
+    
+    const running = runs.filter(r => r.status === 'running')
+    const failed = runs.filter(r => r.status === 'failed')
+    const succeeded = runs.filter(r => r.status === 'success')
+    const recent = runs.slice(0, 20)
+
+    // Group by workflow/pipeline name
+    const byWorkflow = {}
+    runs.forEach(run => {
+      const key = `${run.platform}-${run.workflowName}`
+      if (!byWorkflow[key]) {
+        byWorkflow[key] = {
+          name: run.workflowName,
+          platform: run.platform,
+          runs: [],
+          lastRun: null,
+          successRate: 0
+        }
+      }
+      byWorkflow[key].runs.push(run)
+    })
+
+    // Calculate success rates
+    Object.values(byWorkflow).forEach(wf => {
+      const completed = wf.runs.filter(r => r.status !== 'running')
+      const successful = completed.filter(r => r.status === 'success')
+      wf.successRate = completed.length > 0 
+        ? Math.round((successful.length / completed.length) * 100) 
+        : 0
+      wf.lastRun = wf.runs[0] || null
+    })
+
+    return {
+      running,
+      failed,
+      succeeded,
+      recent,
+      workflows: Object.values(byWorkflow),
+      errors,
+      totalRuns: runs.length
+    }
   }
 }
 

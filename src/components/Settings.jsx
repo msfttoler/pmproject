@@ -8,7 +8,8 @@ const DEFAULT_SETTINGS = {
     releases: true,
     storyGaps: true,
     prs: true,
-    estimator: true
+    estimator: true,
+    cicd: true
   }
 }
 
@@ -55,7 +56,8 @@ export default function Settings({ isOpen, onClose, settings, onToggleFeature, o
     { key: 'releases', label: 'Releases', icon: '🚀', description: 'Track release readiness by milestone' },
     { key: 'storyGaps', label: 'Story Gaps', icon: '🔍', description: 'Analyze stories for missing requirements' },
     { key: 'prs', label: 'PRs', icon: '📦', description: 'Monitor pull requests without code' },
-    { key: 'estimator', label: 'Estimator', icon: '🎯', description: 'AI-powered story point estimation' }
+    { key: 'estimator', label: 'Estimator', icon: '🎯', description: 'AI-powered story point estimation' },
+    { key: 'cicd', label: 'CI/CD', icon: '🔧', description: 'Monitor GitHub Actions & Azure Pipelines' }
   ]
 
   const enabledCount = Object.values(settings.features).filter(Boolean).length

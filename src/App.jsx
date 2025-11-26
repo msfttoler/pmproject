@@ -8,6 +8,7 @@ import ReleaseReadiness from './components/ReleaseReadiness'
 import StoryGapAnalyzer from './components/StoryGapAnalyzer'
 import PRSummaryView from './components/PRSummaryView'
 import StoryPointsEstimator from './components/StoryPointsEstimator'
+import CICDPipelines from './components/CICDPipelines'
 import GitHubConfig from './components/GitHubConfig'
 import Settings, { useSettings } from './components/Settings'
 import { parseTestCases } from './utils/parser'
@@ -136,6 +137,16 @@ Include: happy path, edge cases, negative tests, security, and accessibility sce
                   🎯 Estimator
                 </button>
               )}
+              {settings.features.cicd && (
+                <button
+                  onClick={() => setActiveTab('cicd')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === 'cicd' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🔧 CI/CD
+                </button>
+              )}
             </nav>
             <button
               onClick={() => setShowSettings(true)}
@@ -185,6 +196,12 @@ Include: happy path, edge cases, negative tests, security, and accessibility sce
           <div>
             <h2 className="text-xl font-bold mb-4">🎯 Story Points Estimator</h2>
             <StoryPointsEstimator key={configRefresh} onConfigureGitHub={handleConfigureGitHub} />
+          </div>
+        )}
+        {activeTab === 'cicd' && settings.features.cicd && (
+          <div>
+            <h2 className="text-xl font-bold mb-4">🔧 CI/CD Pipelines</h2>
+            <CICDPipelines key={configRefresh} onConfigureGitHub={handleConfigureGitHub} />
           </div>
         )}
       </main>
