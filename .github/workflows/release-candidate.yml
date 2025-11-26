@@ -1,0 +1,175 @@
+# Demo Workflow: Release Candidate Check
+# This workflow demonstrates PM Command Center's release tracking
+# Shows how PMs can monitor release readiness via @pm /release
+
+name: 🎯 Release Candidate
+
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'rc/**'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      skip_tests:
+        description: 'Skip test suite'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  preflight:
+    name: ✈️ Preflight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🏷️ Determine version
+        id: version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "## 🏷️ Version Info" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+
+      - name: 📋 Check release requirements
+        run: |
+          echo "## ✈️ Preflight Checklist" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Requirement | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Check package.json exists
+          if [ -f "package.json" ]; then
+            echo "| package.json | ✅ Found |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| package.json | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check README exists
+          if [ -f "README.md" ]; then
+            echo "| README.md | ✅ Found |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| README.md | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check for CHANGELOG
+          if [ -f "CHANGELOG.md" ]; then
+            echo "| CHANGELOG.md | ✅ Found |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| CHANGELOG.md | ⚠️ Consider adding |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  build-and-test:
+    name: 🏗️ Build & Test
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: ${{ github.event.inputs.skip_tests != 'true' }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      - name: 🧪 Run test suite
+        run: npm test --if-present
+
+      - name: 🏗️ Production build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: 📦 Archive build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-${{ needs.preflight.outputs.version }}
+          path: dist/
+          retention-days: 30
+
+      - name: 📊 Build summary
+        run: |
+          echo "## 🏗️ Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          if [ -d "dist" ]; then
+            SIZE=$(du -sh dist | cut -f1)
+            FILES=$(find dist -type f | wc -l)
+            echo "| Bundle Size | $SIZE |" >> $GITHUB_STEP_SUMMARY
+            echo "| Files | $FILES |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "| Version | ${{ needs.preflight.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+
+  release-gate:
+    name: 🚦 Release Gate
+    runs-on: ubuntu-latest
+    needs: [preflight, build-and-test]
+    if: always()
+    
+    steps:
+      - name: 📊 Release readiness report
+        run: |
+          echo "## 🚦 Release Gate Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.preflight.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** ${{ needs.preflight.outputs.is_prerelease }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Preflight | ${{ needs.preflight.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Test | ${{ needs.build-and-test.result == 'success' && '✅ Passed' || needs.build-and-test.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **Track this release in PM Command Center**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Web: Check the **Release Readiness** tab" >> $GITHUB_STEP_SUMMARY
+          echo "- Chat: \`@pm /release\` for milestone status" >> $GITHUB_STEP_SUMMARY
+          echo "- Chat: \`@pm /cicd\` for pipeline health" >> $GITHUB_STEP_SUMMARY
+
+      - name: 🚦 Gate decision
+        if: needs.preflight.result != 'success' || needs.build-and-test.result == 'failure'
+        run: |
+          echo "::error::Release gate failed - see summary for details"
+          exit 1

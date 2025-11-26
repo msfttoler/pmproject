@@ -1,0 +1,120 @@
+# Demo Workflow: Documentation Check
+# This workflow shows how PM Command Center tracks documentation quality
+# Great for demonstrating the Gap Analyzer integration
+
+name: 📚 Documentation Check
+
+on:
+  push:
+    paths:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    paths:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      check_level:
+        description: 'Check thoroughness level'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - quick
+          - standard
+          - thorough
+
+jobs:
+  check-readme:
+    name: 📖 README Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Check README exists
+        id: readme
+        run: |
+          if [ -f "README.md" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            LINES=$(wc -l < README.md)
+            echo "lines=$LINES" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "lines=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📋 Check required sections
+        run: |
+          echo "## 📖 README Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          check_section() {
+            if grep -qi "$1" README.md 2>/dev/null; then
+              echo "| $2 | ✅ Found |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $2 | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+            fi
+          }
+          
+          echo "| Section | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          check_section "install" "Installation"
+          check_section "usage" "Usage"
+          check_section "feature" "Features"
+          check_section "license" "License"
+          check_section "contribut" "Contributing"
+
+  check-docs-structure:
+    name: 📁 Documentation Structure
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📊 Analyze documentation
+        run: |
+          echo "## 📁 Documentation Overview" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          MD_COUNT=$(find . -name "*.md" -not -path "./node_modules/*" | wc -l)
+          echo "**Total Markdown files:** $MD_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### 📄 Documentation Files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          find . -name "*.md" -not -path "./node_modules/*" | head -20 | while read file; do
+            LINES=$(wc -l < "$file")
+            echo "- \`$file\` ($LINES lines)" >> $GITHUB_STEP_SUMMARY
+          done
+
+      - name: 🎯 PM Command Center Integration
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "💡 **Tip:** Use \`@pm /gaps\` to find issues with missing documentation" >> $GITHUB_STEP_SUMMARY
+
+  spell-check:
+    name: ✏️ Spell Check
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ✏️ Check spelling
+        uses: crate-ci/typos@master
+        continue-on-error: true
+
+      - name: 📊 Report
+        if: always()
+        run: |
+          echo "## ✏️ Spell Check Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Documentation quality is tracked in PM Command Center CI/CD view" >> $GITHUB_STEP_SUMMARY
