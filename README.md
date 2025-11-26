@@ -1,8 +1,8 @@
-# AI-Powered Test Case Assistant
+# PM Command Center
 
-A lightweight web tool that helps Product Managers generate, refine, and organize test cases from user stories using GitHub Copilot.
+An AI-powered command center for Product Managers - generate test cases, track releases, analyze story gaps, and monitor PRs without touching code.
 
-![Test Case Assistant](https://img.shields.io/badge/Powered%20by-GitHub%20Copilot-blue)
+![PM Command Center](https://img.shields.io/badge/Powered%20by-GitHub%20Copilot-blue)
 
 ## 🚀 Quick Start
 
@@ -18,10 +18,29 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## ✨ Features
 
-- **AI-Powered Generation**: Enter a user story, get comprehensive test cases
-- **Coverage Categories**: Happy path, edge cases, negative tests, security, accessibility
-- **Iterative Refinement**: Edit, remove, or regenerate test cases
-- **Export Options**: Markdown or JSON formats for easy integration
+### 🧪 Test Case Generator
+- Enter a user story, get comprehensive test cases via Copilot
+- Coverage categories: happy path, edge cases, negative tests, security, accessibility
+- Export to Markdown or JSON
+
+### 📊 PM Dashboard
+- Live GitHub integration for real-time metrics
+- Test coverage tracking, backlog health, risk indicators
+
+### 🚀 Release Readiness
+- Milestone-based tracking with completion percentages
+- Blocker identification and missing test detection
+- Auto-generated release notes
+
+### 🔍 Story Gap Analyzer
+- AI-powered analysis of user stories
+- Finds missing acceptance criteria, edge cases, security/accessibility gaps
+- Quality scoring per story
+
+### 📦 PR Summary View
+- PM-friendly pull request overview
+- Review status, CI checks, linked issues
+- No code reading required
 
 ## 📁 Project Structure
 
@@ -72,8 +91,10 @@ Generated test cases follow this structure:
 ## 🏆 Hackathon Goals
 
 - [x] AI-powered test case generation
-- [x] Minimal UI (~200 lines of code)
-- [x] Export functionality
+- [x] PM Dashboard with live GitHub data
+- [x] Release readiness tracking
+- [x] Story gap analysis
+- [x] PR summary view for PMs
 - [x] Elegant, intuitive UX
 
 ---

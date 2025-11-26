@@ -66,7 +66,7 @@ Include: happy path, edge cases, negative tests, security, and accessibility sce
       <header className="border-b border-slate-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            ✅ Test Case Assistant
+            🎯 PM Command Center
             <span className="text-sm font-normal text-slate-400">Powered by GitHub Copilot</span>
           </h1>
           <nav className="flex gap-1 bg-slate-800 rounded-lg p-1">
@@ -76,7 +76,7 @@ Include: happy path, edge cases, negative tests, security, and accessibility sce
                 activeTab === 'generator' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
-              🧪 Generator
+              🧪 Test Cases
             </button>
             <button
               onClick={() => setActiveTab('dashboard')}
