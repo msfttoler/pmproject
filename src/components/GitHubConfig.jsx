@@ -1,9 +1,9 @@
 import { useState } from 'react'
 
-export default function GitHubConfig({ config, onSave, onClose }) {
-  const [owner, setOwner] = useState(config.owner || '')
-  const [repo, setRepo] = useState(config.repo || '')
-  const [token, setToken] = useState(config.token || '')
+export default function GitHubConfig({ config = {}, onSave, onClose }) {
+  const [owner, setOwner] = useState(config?.owner || '')
+  const [repo, setRepo] = useState(config?.repo || '')
+  const [token, setToken] = useState(config?.token || '')
 
   const handleSave = () => {
     onSave({ owner, repo, token })
