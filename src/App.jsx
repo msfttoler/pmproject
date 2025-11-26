@@ -41,6 +41,11 @@ Include: happy path, edge cases, negative tests, security, and accessibility sce
     setShowModal(false)
   }
 
+  const handleGenerateFromRisk = (storyTitle) => {
+    setStory(`As a user, I want to ${storyTitle.toLowerCase()} so that I can complete my task successfully.`)
+    setActiveTab('generator')
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white">
       <header className="border-b border-slate-700 px-6 py-4">
@@ -82,7 +87,7 @@ Include: happy path, edge cases, negative tests, security, and accessibility sce
             </section>
           </div>
         ) : (
-          <Dashboard />
+          <Dashboard onGenerateTests={handleGenerateFromRisk} />
         )}
       </main>
 

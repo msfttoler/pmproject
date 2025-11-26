@@ -2,7 +2,7 @@ import { generateSampleData } from '../types/dashboard'
 
 const data = generateSampleData()
 
-export default function Dashboard() {
+export default function Dashboard({ onGenerateTests }) {
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -70,7 +70,7 @@ export default function Dashboard() {
         <h3 className="font-semibold mb-4">🚨 Risk Indicators - Action Required</h3>
         <div className="space-y-3">
           {data.risks.map(risk => (
-            <RiskRow key={risk.storyId} risk={risk} />
+            <RiskRow key={risk.storyId} risk={risk} onGenerate={onGenerateTests} />
           ))}
         </div>
       </div>
@@ -128,7 +128,7 @@ function CoverageBar({ label, percent, color }) {
   )
 }
 
-function RiskRow({ risk }) {
+function RiskRow({ risk, onGenerate }) {
   const levelColors = {
     critical: 'bg-red-500',
     high: 'bg-orange-500',
@@ -145,7 +145,10 @@ function RiskRow({ risk }) {
         <div className="font-medium">{risk.storyId}: {risk.storyTitle}</div>
         <div className="text-sm text-slate-400">{risk.reasons.join(' • ')}</div>
       </div>
-      <button className="text-sm text-blue-400 hover:text-blue-300 whitespace-nowrap">
+      <button 
+        onClick={() => onGenerate(risk.storyTitle)}
+        className="text-sm text-blue-400 hover:text-blue-300 whitespace-nowrap"
+      >
         → Generate Tests
       </button>
     </div>
