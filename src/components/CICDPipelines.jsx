@@ -156,6 +156,25 @@ export default function CICDPipelines({ onConfigureGitHub }) {
     : activeTab === 'failed' ? failed
     : recent
 
+  // Identify security-related workflows
+  const securityKeywords = ['security', 'scan', 'audit', 'codeql', 'dependabot', 'snyk', 'vulnerability', 'sast', 'dast']
+  const securityWorkflows = workflows?.filter(wf =>
+    securityKeywords.some(kw => wf.name.toLowerCase().includes(kw))
+  ) || []
+
+  // Determine overall security status
+  const getSecurityStatus = () => {
+    if (securityWorkflows.length === 0) return 'none'
+    const lastRuns = securityWorkflows.map(wf => wf.lastRun).filter(Boolean)
+    if (lastRuns.length === 0) return 'none'
+    if (lastRuns.some(r => r.status === 'running')) return 'running'
+    if (lastRuns.every(r => r.status === 'success')) return 'passing'
+    if (lastRuns.some(r => r.status === 'failed')) return 'failing'
+    return 'unknown'
+  }
+
+  const securityStatus = getSecurityStatus()
+
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -197,6 +216,114 @@ export default function CICDPipelines({ onConfigureGitHub }) {
             </div>
             <div className="text-3xl">⚙️</div>
           </div>
+        </div>
+      </div>
+
+      {/* Security Scan Status */}
+      <div className={`border rounded-lg shadow-sm ${
+        securityStatus === 'passing' ? 'bg-green-50 border-green-200' :
+        securityStatus === 'failing' ? 'bg-red-50 border-red-200' :
+        securityStatus === 'running' ? 'bg-blue-50 border-blue-200' :
+        'bg-gray-50 border-gray-200'
+      }`}>
+        <div className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-lg flex items-center justify-center text-2xl ${
+                securityStatus === 'passing' ? 'bg-green-100' :
+                securityStatus === 'failing' ? 'bg-red-100' :
+                securityStatus === 'running' ? 'bg-blue-100' :
+                'bg-gray-100'
+              }`}>
+                {securityStatus === 'passing' ? '🛡️' :
+                 securityStatus === 'failing' ? '⚠️' :
+                 securityStatus === 'running' ? '🔄' : '❓'}
+              </div>
+              <div>
+                <h3 className={`font-semibold text-lg ${
+                  securityStatus === 'passing' ? 'text-green-800' :
+                  securityStatus === 'failing' ? 'text-red-800' :
+                  securityStatus === 'running' ? 'text-blue-800' :
+                  'text-gray-700'
+                }`}>
+                  Security Scans: {
+                    securityStatus === 'passing' ? 'All Passing' :
+                    securityStatus === 'failing' ? 'Attention Needed' :
+                    securityStatus === 'running' ? 'In Progress' :
+                    'No Scans Detected'
+                  }
+                </h3>
+                <p className={`text-sm ${
+                  securityStatus === 'passing' ? 'text-green-600' :
+                  securityStatus === 'failing' ? 'text-red-600' :
+                  securityStatus === 'running' ? 'text-blue-600' :
+                  'text-gray-500'
+                }`}>
+                  {securityWorkflows.length > 0
+                    ? `${securityWorkflows.length} security workflow${securityWorkflows.length > 1 ? 's' : ''} configured`
+                    : 'No security workflows found in this repository'}
+                </p>
+              </div>
+            </div>
+            {securityStatus !== 'none' && (
+              <div className={`px-3 py-1.5 rounded-full text-sm font-semibold ${
+                securityStatus === 'passing' ? 'bg-green-200 text-green-800' :
+                securityStatus === 'failing' ? 'bg-red-200 text-red-800' :
+                securityStatus === 'running' ? 'bg-blue-200 text-blue-800' :
+                'bg-gray-200 text-gray-700'
+              }`}>
+                {securityStatus === 'passing' ? '✅ SECURE' :
+                 securityStatus === 'failing' ? '❌ ACTION REQUIRED' :
+                 securityStatus === 'running' ? '⏳ SCANNING' :
+                 'UNKNOWN'}
+              </div>
+            )}
+          </div>
+
+          {/* Individual security workflow details */}
+          {securityWorkflows.length > 0 && (
+            <div className="mt-4 grid gap-2">
+              {securityWorkflows.map(wf => (
+                <div
+                  key={`${wf.platform}-${wf.name}`}
+                  className="flex items-center justify-between bg-white rounded-lg p-3 border border-opacity-50"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{getStatusIcon(wf.lastRun?.status || 'unknown')}</span>
+                    <span className="font-medium text-gray-900">{wf.name}</span>
+                    <span className="text-lg">{getPlatformIcon(wf.platform)}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            wf.successRate >= 80 ? 'bg-green-500' :
+                            wf.successRate >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${wf.successRate}%` }}
+                        />
+                      </div>
+                      <span className="text-sm text-gray-600">{wf.successRate}%</span>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      Last: {wf.lastRun ? formatTimeAgo(wf.lastRun.createdAt) : 'never'}
+                    </span>
+                    {wf.lastRun?.url && (
+                      <a
+                        href={wf.lastRun.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        View →
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
